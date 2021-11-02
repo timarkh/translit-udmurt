@@ -1,3 +1,18 @@
+*.eaf
+*.pfsx
+*.wav
+*.mp3
+*.mp4
+*.mts
+*.avi
+*.jpg
+*.png
+*.docx
+*.doc
+*.xlsx
+*.xls
+.idea/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
