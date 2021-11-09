@@ -23,11 +23,12 @@ class UdmurtTransliterator:
                'o': 'о', 'p': 'п', 'r': 'р',
                's': 'с', 't': 'т', 'u': 'у',
                'c': 'ц', 'w': 'ў', 'x': 'х',
-               'y': 'ы', 'f': 'ф', 'ɨ': 'ы'}
+               'y': 'ы', 'f': 'ф', 'ɨ': 'ы',
+               'ü': 'ӱ', 'ŋ': 'ң'}
     cyr2dic = {v: k for k, v in dic2cyr.items()}
     cyr2dic.update({'я': 'ʼa', 'е': 'ʼe', 'и': 'ʼi', 'ӝ': 'ǯ', 'ӵ': 'č', 'щ': 'šʼ',
                     'ё': 'ʼo', 'ю': 'ʼu', 'ь': 'ʼ', 'ы': 'ɨ', 'у': 'u'})
-    dic2cyr.update({'ŋ': 'н', 'ä': 'а', 'h': 'х',
+    dic2cyr.update({'ä': 'а', 'h': 'х',
                     'ö': 'ӧ'})
     cyrHard2Soft = {'а': 'я', 'э': 'е', 'е': 'е', 'ӥ': 'и', 'о': 'ё', 'у': 'ю'}
     rxSoften = re.compile('(?<![чӟ])ʼ([аэӥоу])', flags=re.I)
@@ -55,6 +56,10 @@ class UdmurtTransliterator:
     rxWDiacriticCapital = re.compile('U̯')
     rxUe = re.compile('u̇')
     rxUeCapital = re.compile('U̇')
+    rxUeCyr = re.compile('ӱ')
+    rxUeCyrCapital = re.compile('Ӱ')
+    rxWCyr = re.compile('ў')
+    rxWCyrCapital = re.compile('Ў')
     rxOe = re.compile('ȯ')
     rxOeCapital = re.compile('Ȯ')
     rxGlottalStop = re.compile('ˀ')
@@ -62,8 +67,13 @@ class UdmurtTransliterator:
     rxSchwaCapital = re.compile('Ə̈|Ə̑')
     rxY = re.compile('i̮')
     rxYCapital = re.compile('I̮')
+
     rxCyrSchwa = re.compile('ө')
     rxCyrSchwaCapital = re.compile('Ө')
+    rxCyrJeStart = re.compile('^йэ')
+    rxCyrJeStartCapital = re.compile('^Йэ')
+    rxCyrNg = re.compile('ң')
+    rxCyrJYEnd = re.compile('(?<=[аеёиӥоӧуыэюяө])й([өы]н$|[өы]с[ьʼ])')
 
     rxCyrillic = re.compile('^[а-яёӟӥӧўөА-ЯЁӞӤӦЎӨ.,;:!?\-()\\[\\]{}<>]*$')
 
@@ -77,12 +87,20 @@ class UdmurtTransliterator:
         self.src = src
         self.target = target
         self.eafCleanup = eafCleanup
-        self.load_replacements('data/cyr_replacements_rx.csv')
+
+        # Basic replacements that always have to take place
+        # with Cyrillic output:
+        self.cyrReplacementsBasic, self.rxCyrReplacementsBasic = self.load_replacements('data/cyr_replacements_basic_rx.csv')
+        # Additional replacements that should only be applied
+        # if complete standardization is required:
+        self.cyrReplacementsStd, self.rxCyrReplacementsStd = self.load_replacements('data/cyr_replacements_std_rx.csv')
+
         self.freqDict = self.load_freq_list()
         print('Initialization complete.')
 
     def load_replacements(self, filename):
         cyrRx = []
+        cyrReplacements = {}
         with open(filename, 'r', encoding='utf-8') as fIn:
             for line in fIn:
                 if len(line) <= 3:
@@ -91,11 +109,10 @@ class UdmurtTransliterator:
                 if len(cyrCorrect) > 0 and len(cyrSrc) > 0:
                     cyrSrc = cyrSrc.strip('^$')
                     cyrRx.append(cyrSrc)
-                    self.cyrReplacements[re.compile('^' + cyrSrc + '$')] = cyrCorrect
-                    self.cyrReplacements[re.compile('^' + cyrSrc.upper() + '$')] = cyrCorrect.upper()
-                    self.cyrReplacements[re.compile('^' + cyrSrc.capitalize() + '$')] = cyrCorrect.capitalize()
-        self.rxCyrReplacements = re.compile('|'.join(r for r in sorted(cyrRx, key=lambda x: -len(x))),
-                                            flags=re.I)
+                    cyrReplacements[re.compile('^' + cyrSrc + '$')] = cyrCorrect
+                    cyrReplacements[re.compile('^' + cyrSrc.upper() + '$')] = cyrCorrect.upper()
+                    cyrReplacements[re.compile('^' + cyrSrc.capitalize() + '$')] = cyrCorrect.capitalize()
+        return cyrReplacements, re.compile('|'.join(r for r in sorted(cyrRx, key=lambda x: -len(x))), flags=re.I)
 
     def load_freq_list(self):
         """
@@ -238,9 +255,11 @@ class UdmurtTransliterator:
         word = self.rxYCapital.sub('Ɨ', word)
         return word
 
-    def expand_glottal_stop_variants(self, wordVariants):
+    def expand_variants(self, wordVariants, rxWhat, replacements):
         """
-        Try replacing glottal stop with different vowels.
+        Replace each occurrence of rxWhat within each of the words
+        stored in wordVariants with all options listed in replacements.
+        Return updated word list.
         """
         wordVariantsUpdated = []
         prevListLen = -1
@@ -248,31 +267,60 @@ class UdmurtTransliterator:
             wordVariantsUpdated = []
             prevListLen = len(wordVariants)
             for word in wordVariants:
-                if self.rxGlottalStop.search(word) is None:
+                if rxWhat.search(word) is None:
                     wordVariantsUpdated.append(word)
                 else:
-                    for consonant in 'дтгк':
-                        wordVariantsUpdated.append(self.rxGlottalStop.sub(consonant, word, count=1))
+                    for replacement in replacements:
+                        wordNew = rxWhat.sub(replacement, word, count=1)
+                        if wordNew not in wordVariantsUpdated:
+                            wordVariantsUpdated.append(wordNew)
             wordVariants = wordVariantsUpdated[:]
         return wordVariants
+
+    def expand_ue_variants(self, wordVariants):
+        """
+        Try replacing ü with u or wi.
+        """
+        wordVariants = self.expand_variants(wordVariants, self.rxUeCyr, ('у', 'уи'))
+        return self.expand_variants(wordVariants, self.rxUeCyrCapital, ('У', 'Уи'))
+
+    def expand_w_variants(self, wordVariants):
+        """
+        Try replacing w with u or v.
+        """
+        wordVariants = self.expand_variants(wordVariants, self.rxWCyr, ('у', 'в'))
+        return self.expand_variants(wordVariants, self.rxWCyrCapital, ('У', 'В'))
+
+    def expand_ye_variants(self, wordVariants):
+        """
+        Try replacing je at the start with e, je or ö.
+        """
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrJeStart, ('е', 'э', 'ӧ'))
+        return self.expand_variants(wordVariants, self.rxCyrJeStartCapital, ('Е', 'Э', 'Ӧ'))
+
+    def expand_ng_variants(self, wordVariants):
+        """
+        Try replacing ŋ with n or m.
+        """
+        return self.expand_variants(wordVariants, self.rxCyrNg, ('н', 'м'))
+
+    def expand_Vjy_variants(self, wordVariants):
+        """
+        Try removing the j between a vowel and y at the end of the word.
+        """
+        return self.expand_variants(wordVariants, self.rxCyrJYEnd, ('\\1', 'й\\1'))
+
+    def expand_glottal_stop_variants(self, wordVariants):
+        """
+        Try replacing glottal stop with different consonants.
+        """
+        return self.expand_variants(wordVariants, self.rxGlottalStop, ('д', 'т', 'г', 'к'))
 
     def expand_shwa_variants(self, wordVariants):
         """
         Try replacing schwa with different vowels.
         """
-        wordVariantsUpdated = []
-        prevListLen = -1
-        while len(wordVariantsUpdated) != prevListLen:
-            wordVariantsUpdated = []
-            prevListLen = len(wordVariants)
-            for word in wordVariants:
-                if self.rxCyrSchwa.search(word) is None:
-                    wordVariantsUpdated.append(word)
-                else:
-                    for vowel in 'ыиуӧ':
-                        wordVariantsUpdated.append(self.rxCyrSchwa.sub(vowel, word, count=1))
-            wordVariants = wordVariantsUpdated[:]
-        return wordVariants
+        return self.expand_variants(wordVariants, self.rxCyrSchwa, ('ы', 'ӥ', 'у', 'ӧ'))
 
     def pick_best(self, words):
         """
@@ -311,10 +359,14 @@ class UdmurtTransliterator:
 
         # Some replacements are ambiguous
         wordVariants = [word]
-        if 'ü' in word.lower():
-            wordVariants = [word.replace('ü', 'у').replace('Ü', 'У'), word.replace('ü', 'уи').replace('Ü', 'УИ')]
+        wordVariants = self.expand_ye_variants(wordVariants)
+        wordVariants = self.expand_Vjy_variants(wordVariants)
+        wordVariants = self.expand_ng_variants(wordVariants)
+        wordVariants = self.expand_ue_variants(wordVariants)
+        wordVariants = self.expand_w_variants(wordVariants)
         wordVariants = self.expand_glottal_stop_variants(wordVariants)
         wordVariants = self.expand_shwa_variants(wordVariants)
+        # print(wordVariants)
 
         for i in range(len(wordVariants)):
             w = wordVariants[i]
@@ -337,8 +389,11 @@ class UdmurtTransliterator:
             w = w.replace('ʼ', 'ь')
             w = self.rxExtraSoft.sub('\\1\\1', w)
 
-            if self.rxCyrReplacements.search(w) is not None:
-                for rxSrc, replacement in self.cyrReplacements.items():
+            if self.rxCyrReplacementsBasic.search(w) is not None:
+                for rxSrc, replacement in self.cyrReplacementsBasic.items():
+                    w = rxSrc.sub(replacement, w)
+            if self.rxCyrReplacementsStd.search(w) is not None:
+                for rxSrc, replacement in self.cyrReplacementsStd.items():
                     w = rxSrc.sub(replacement, w)
 
             wordVariants[i] = w
@@ -408,7 +463,12 @@ if __name__ == '__main__':
                               eafCleanup=True)
     print(bt.transliterate("no uˀmort s'äin polnost'ju kə̑ljosə̑z vala."))
     print(bt.transliterate("van' odiˀ vnuke."))
+    print(bt.transliterate("nə̑lə̑, baˀǯ'ə̑ŋez, d'iana."))
+    print(bt.transliterate("nə̑lə̑lə̑ ku̯amə̑n ares."))
     print(bt.transliterate("nə̑lə̑ uže magn'itə̑n d'irektor lu̇sa."))
+    print(bt.transliterate("kuzpale, karte mə̑nam uža das ku̇n' ar uže sverlovskə̑n."))
     print(bt.transliterate("van'ze verasa bə̑dti mon tileˀlə̑, van' istori asles'tə̑m."))
+    print(bt.transliterate("otə̑n al'i uks'o tə̑ro ke no, užas's'os tə̑ros jevə̑l ni."))
+    print(bt.transliterate("užaj školajə̑n ku̯amə̑n ar, biologi= biologija no ximija nu̇i."))
     # print(bt.beserman_translit_cyrillic('walʼlʼo no soje tuləs pɤžʼtəlizə, štobɨ gužem užan dərja.... marəmen...'))
     # print(bt.beserman_translit_upa('walʼlʼo no soje tuləs pɤžʼtəlizə, štobɨ gužem užan dərja.... marəmen...'))

@@ -181,8 +181,8 @@ class EafProcessor:
         if not os.path.exists('eaf'):
             print('All ELAN files should be located in the eaf folder.')
             return
-        if not os.path.exists('eaf_analyzed'):
-            os.makedirs('eaf_analyzed')
+        if not os.path.exists('eaf_transliterated'):
+            os.makedirs('eaf_transliterated')
 
         nDocs = 0
         for root, dirs, files in os.walk('eaf'):
@@ -190,7 +190,7 @@ class EafProcessor:
                 if not fname.lower().endswith('.eaf'):
                     continue
                 fnameEaf = os.path.join(root, fname)
-                fnameEafOut = 'eaf_analyzed' + fnameEaf[3:]
+                fnameEafOut = 'eaf_transliterated' + fnameEaf[3:]
                 self.eafTree = etree.parse(fnameEaf)
                 outDirName = EafProcessor.rxDir.sub('', fnameEafOut)
                 if len(outDirName) > 0 and not os.path.exists(outDirName):
