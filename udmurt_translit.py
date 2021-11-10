@@ -72,8 +72,16 @@ class UdmurtTransliterator:
     rxCyrSchwaCapital = re.compile('Ө')
     rxCyrJeStart = re.compile('^йэ')
     rxCyrJeStartCapital = re.compile('^Йэ')
+    rxCyrDZjaStart = re.compile('^ӟʼа')
+    rxCyrDZjaStartCapital = re.compile('^Ӟʼа')
     rxCyrNg = re.compile('ң')
     rxCyrJYEnd = re.compile('(?<=[аеёиӥоӧуыэюяө])й([өы]н$|[өы]с[ьʼ])')
+    rxCyrZh = re.compile('ж')
+    rxCyrZhCapital = re.compile('Ж')
+    rxCyrSh = re.compile('ш')
+    rxCyrShCapital = re.compile('Ш')
+    rxCyrCh = re.compile('чʼ?')
+    rxCyrChCapital = re.compile('Чʼ?')
 
     rxCyrillic = re.compile('^[а-яёӟӥӧўөА-ЯЁӞӤӦЎӨ.,;:!?\-()\\[\\]{}<>]*$')
 
@@ -268,7 +276,8 @@ class UdmurtTransliterator:
             prevListLen = len(wordVariants)
             for word in wordVariants:
                 if rxWhat.search(word) is None:
-                    wordVariantsUpdated.append(word)
+                    if word not in wordVariantsUpdated:
+                        wordVariantsUpdated.append(word)
                 else:
                     for replacement in replacements:
                         wordNew = rxWhat.sub(replacement, word, count=1)
@@ -298,11 +307,39 @@ class UdmurtTransliterator:
         wordVariants = self.expand_variants(wordVariants, self.rxCyrJeStart, ('е', 'э', 'ӧ'))
         return self.expand_variants(wordVariants, self.rxCyrJeStartCapital, ('Е', 'Э', 'Ӧ'))
 
+    def expand_dzja_variants(self, wordVariants):
+        """
+        Try replacing dzja at the start with dzja or ja.
+        """
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrDZjaStart, ('ӟʼа', 'йа'))
+        return self.expand_variants(wordVariants, self.rxCyrDZjaStartCapital, ('Ӟʼа', 'Йа'))
+
     def expand_ng_variants(self, wordVariants):
         """
         Try replacing ŋ with n or m.
         """
         return self.expand_variants(wordVariants, self.rxCyrNg, ('н', 'м'))
+
+    def expand_sh_variants(self, wordVariants):
+        """
+        Try replacing sh with sh or tsh.
+        """
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrSh, ('ш', 'ӵ'))
+        return self.expand_variants(wordVariants, self.rxCyrShCapital, ('Ш', 'Ӵ'))
+
+    def expand_ch_variants(self, wordVariants):
+        """
+        Try replacing ch with ch or tsh.
+        """
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrCh, ('чʼ', 'ӵ'))
+        return self.expand_variants(wordVariants, self.rxCyrChCapital, ('Чʼ', 'Ӵ'))
+
+    def expand_zh_variants(self, wordVariants):
+        """
+        Try replacing zh with zh or dzh.
+        """
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrZh, ('ж', 'ӝ'))
+        return self.expand_variants(wordVariants, self.rxCyrZhCapital, ('Ж', 'Ӝ'))
 
     def expand_Vjy_variants(self, wordVariants):
         """
@@ -360,8 +397,12 @@ class UdmurtTransliterator:
         # Some replacements are ambiguous
         wordVariants = [word]
         wordVariants = self.expand_ye_variants(wordVariants)
+        wordVariants = self.expand_dzja_variants(wordVariants)
         wordVariants = self.expand_Vjy_variants(wordVariants)
         wordVariants = self.expand_ng_variants(wordVariants)
+        wordVariants = self.expand_sh_variants(wordVariants)
+        wordVariants = self.expand_ch_variants(wordVariants)
+        wordVariants = self.expand_zh_variants(wordVariants)
         wordVariants = self.expand_ue_variants(wordVariants)
         wordVariants = self.expand_w_variants(wordVariants)
         wordVariants = self.expand_glottal_stop_variants(wordVariants)
@@ -398,6 +439,7 @@ class UdmurtTransliterator:
 
             wordVariants[i] = w
 
+        # print(wordVariants)
         return self.pick_best(wordVariants)
 
     def transliterate_word(self, word, src='', target='', eafCleanup=None):
