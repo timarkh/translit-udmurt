@@ -34,8 +34,8 @@ class UdmurtTransliterator:
     rxSoften = re.compile('(?<![чӟ])ʼ([аэӥоу])', flags=re.I)
     rxCyrSoften = re.compile('([čǯ])(?!ʼ)', flags=re.I)
     rxCyrMultSoften = re.compile('ʼ{2,}')
-    rxNeutral1 = re.compile('(?<=[бвгжкмпрфхцчшщйʼ])([эӥ])', re.I)
-    rxNeutral2 = re.compile('([бвгжкмпрфхцчʼаоэӥуўяёеиюө]|\\b)(ӥ)', re.I)
+    rxNeutral1 = re.compile('(?<=[бвгжӝкмпрфхцчӵшщйʼ])([эӥ])', re.I)
+    rxNeutral2 = re.compile('([бвгжӝкмпрфхцчӵʼаоэӥуўяёеиюө]|\\b)(ӥ)', re.I)
     rxCyrNeutral = re.compile('(?<=[bvgzkmprfxcwj])ʼ', re.I)
     rxCJV = re.compile('(?<=[бвгджзӟклмнпрстўфхцчшщ])й([аяэеӥоёую])', re.I)
     rxSh = re.compile('ш(?=[ʼяёюиеЯЁЮИЕ])')
@@ -72,8 +72,11 @@ class UdmurtTransliterator:
     rxCyrSchwaCapital = re.compile('Ө')
     rxCyrJeStart = re.compile('^йэ')
     rxCyrJeStartCapital = re.compile('^Йэ')
-    rxCyrDZjaStart = re.compile('^ӟʼа')
-    rxCyrDZjaStartCapital = re.compile('^Ӟʼа')
+    rxCyrDZjVStart = re.compile('^ӟʼ(?=[аеёиӥоӧуыэюяө])')
+    rxCyrDZjVStartCapital = re.compile('^Ӟʼ(?=[аеёиӥоӧуыэюяө])')
+    rxCyrChV = re.compile('чʼ(?=[аеёиӥоӧуыэюяө])')
+    rxCyrChVCapital = re.compile('Чʼ(?=[аеёиӥоӧуыэюяө])')
+    rxCyrDZjVMiddle = re.compile('(?<=\\w)ӟʼ(?=[аеёиӥоӧуыэюяө])')
     rxCyrNg = re.compile('ң')
     rxCyrJYEnd = re.compile('(?<=[аеёиӥоӧуыэюяө])й([өы]н$|[өы]с[ьʼ])')
     rxCyrZh = re.compile('ж')
@@ -82,6 +85,7 @@ class UdmurtTransliterator:
     rxCyrShCapital = re.compile('Ш')
     rxCyrCh = re.compile('чʼ?')
     rxCyrChCapital = re.compile('Чʼ?')
+    rxCyrConsCluster = re.compile('([бпдт])([рл])')
 
     rxCyrillic = re.compile('^[а-яёӟӥӧўөА-ЯЁӞӤӦЎӨ.,;:!?\-()\\[\\]{}<>]*$')
 
@@ -304,21 +308,41 @@ class UdmurtTransliterator:
         """
         Try replacing je at the start with e, je or ö.
         """
-        wordVariants = self.expand_variants(wordVariants, self.rxCyrJeStart, ('е', 'э', 'ӧ'))
-        return self.expand_variants(wordVariants, self.rxCyrJeStartCapital, ('Е', 'Э', 'Ӧ'))
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrJeStart, ('йэ', 'э', 'ӧ'))
+        return self.expand_variants(wordVariants, self.rxCyrJeStartCapital, ('Йэ', 'Э', 'Ӧ'))
 
-    def expand_dzja_variants(self, wordVariants):
+    def expand_dzjV_variants_start(self, wordVariants):
         """
-        Try replacing dzja at the start with dzja or ja.
+        Try replacing dzjV at the start with dzjV, djV or jV.
         """
-        wordVariants = self.expand_variants(wordVariants, self.rxCyrDZjaStart, ('ӟʼа', 'йа'))
-        return self.expand_variants(wordVariants, self.rxCyrDZjaStartCapital, ('Ӟʼа', 'Йа'))
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrDZjVStart, ('ӟʼ', 'дʼ', 'й'))
+        return self.expand_variants(wordVariants, self.rxCyrDZjVStartCapital, ('Ӟʼ', 'Дʼ', 'Й'))
+
+    def expand_dzjV_variants_middle(self, wordVariants):
+        """
+        Try replacing dzja with dzja or dja.
+        """
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrDZjVMiddle, ('ӟʼ', 'дʼ'))
+        return wordVariants
+
+    def expand_chV_variants(self, wordVariants):
+        """
+        Try replacing cha at the start with cha or tja.
+        """
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrChV, ('чʼ', 'тʼ'))
+        return self.expand_variants(wordVariants, self.rxCyrChVCapital, ('Чʼ', 'Тʼ'))
 
     def expand_ng_variants(self, wordVariants):
         """
-        Try replacing ŋ with n or m.
+        Try replacing ŋ with n, nj or m.
         """
-        return self.expand_variants(wordVariants, self.rxCyrNg, ('н', 'м'))
+        return self.expand_variants(wordVariants, self.rxCyrNg, ('н', 'нʼ', 'м'))
+
+    def expand_cons_cluster_variants(self, wordVariants):
+        """
+        Try inserting y in certain consonant clusters.
+        """
+        return self.expand_variants(wordVariants, self.rxCyrConsCluster, ('\\1\\2', '\\1ы\\2'))
 
     def expand_sh_variants(self, wordVariants):
         """
@@ -397,12 +421,15 @@ class UdmurtTransliterator:
         # Some replacements are ambiguous
         wordVariants = [word]
         wordVariants = self.expand_ye_variants(wordVariants)
-        wordVariants = self.expand_dzja_variants(wordVariants)
+        wordVariants = self.expand_dzjV_variants_start(wordVariants)
+        wordVariants = self.expand_chV_variants(wordVariants)
+        wordVariants = self.expand_dzjV_variants_middle(wordVariants)
         wordVariants = self.expand_Vjy_variants(wordVariants)
         wordVariants = self.expand_ng_variants(wordVariants)
         wordVariants = self.expand_sh_variants(wordVariants)
         wordVariants = self.expand_ch_variants(wordVariants)
         wordVariants = self.expand_zh_variants(wordVariants)
+        wordVariants = self.expand_cons_cluster_variants(wordVariants)
         wordVariants = self.expand_ue_variants(wordVariants)
         wordVariants = self.expand_w_variants(wordVariants)
         wordVariants = self.expand_glottal_stop_variants(wordVariants)
@@ -505,6 +532,7 @@ if __name__ == '__main__':
                               eafCleanup=True)
     print(bt.transliterate("no uˀmort s'äin polnost'ju kə̑ljosə̑z vala."))
     print(bt.transliterate("van' odiˀ vnuke."))
+    print(bt.transliterate("jen pitra."))
     print(bt.transliterate("nə̑lə̑, baˀǯ'ə̑ŋez, d'iana."))
     print(bt.transliterate("nə̑lə̑lə̑ ku̯amə̑n ares."))
     print(bt.transliterate("nə̑lə̑ uže magn'itə̑n d'irektor lu̇sa."))

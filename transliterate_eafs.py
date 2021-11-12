@@ -61,7 +61,7 @@ class EafProcessor:
         for constraint, tierType in tierAttrs:
             tierTypeTxt = '<LINGUISTIC_TYPE CONSTRAINTS="' + constraint + '"' \
                           ' GRAPHIC_REFERENCES="false" LINGUISTIC_TYPE_ID="' + tierType + '"' \
-                                                                                                                                          ' TIME_ALIGNABLE="false"/>\n'
+                          ' TIME_ALIGNABLE="false"/>\n'
             tierEl = self.eafTree.xpath(
                 '/ANNOTATION_DOCUMENT/LINGUISTIC_TYPE[@LINGUISTIC_TYPE_ID=\'' + tierType + '\']')
             lastTier = self.eafTree.xpath('/ANNOTATION_DOCUMENT/TIER')[-1]
