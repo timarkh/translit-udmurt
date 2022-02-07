@@ -30,6 +30,17 @@ class UdmurtTransliterator:
                     'ё': 'ʼo', 'ю': 'ʼu', 'ь': 'ʼ', 'ы': 'ɨ', 'у': 'u'})
     dic2cyr.update({'ä': 'а', 'h': 'х',
                     'ö': 'ӧ'})
+    cyr2upa = {'а': 'a', 'б': 'b', 'в': 'v',
+               'г': 'g', 'д': 'd', 'э': 'e',
+               'ж': 'ž', 'ш': 'š', 'ӧ': 'ӧ',
+               'ө': 'ə̑', 'ъ': 'ə̑', 'ӹ': 'ə̈', 'ч': 'č',
+               'з': 'z', 'и': 'i', 'й': 'j', 'к': 'k',
+               'л': 'l', 'м': 'm', 'н': 'n',
+               'о': 'o', 'п': 'p', 'р': 'r',
+               'с': 's', 'т': 't', 'у': 'u',
+               'ц': 'c', 'ў': 'u̯', 'х': 'x',
+               'ф': 'f', 'ы': 'i̮', 'ӓ': 'ä',
+               'ӱ': 'u̇', 'ң': 'ŋ'}
     cyrHard2Soft = {'а': 'я', 'э': 'е', 'е': 'е', 'ӥ': 'и', 'о': 'ё', 'у': 'ю'}
     rxSoften = re.compile('(?<![чӟ])ʼ([аэӥоу])', flags=re.I)
     rxCyrSoften = re.compile('([čǯ])(?!ʼ)', flags=re.I)
@@ -67,6 +78,9 @@ class UdmurtTransliterator:
     rxSchwaCapital = re.compile('Ə̈|Ə̑')
     rxY = re.compile('i̮')
     rxYCapital = re.compile('I̮')
+    rxCyrFinalT = re.compile('т$')
+    rxCyrFinalK = re.compile('к$')
+    rxCyrFinalP = re.compile('г$')
 
     rxCyrSchwa = re.compile('ө')
     rxCyrSchwaCapital = re.compile('Ө')
@@ -85,7 +99,11 @@ class UdmurtTransliterator:
     rxCyrShCapital = re.compile('Ш')
     rxCyrCh = re.compile('чʼ?')
     rxCyrChCapital = re.compile('Чʼ?')
+    rxCyrMM = re.compile('мм')
+    rxCyrChCh = re.compile('чʼ?чʼ?')
     rxCyrConsCluster = re.compile('([бпдт])([рл])')
+    rxOeCyr = re.compile('ӧ⁰')
+    rxOeCapitalCyr = re.compile('Ӧ⁰')
 
     rxCyrillic = re.compile('^[а-яёӟӥӧўөА-ЯЁӞӤӦЎӨ.,;:!?\-()\\[\\]{}<>]*$')
 
@@ -267,6 +285,11 @@ class UdmurtTransliterator:
         word = self.rxYCapital.sub('Ɨ', word)
         return word
 
+    def join_digraphs_cyr(self, word):
+        word = self.rxOeCyr.sub('ȯ', word)
+        word = self.rxOeCapitalCyr.sub('Ȯ', word)
+        return word
+
     def expand_variants(self, wordVariants, rxWhat, replacements):
         """
         Replace each occurrence of rxWhat within each of the words
@@ -383,6 +406,22 @@ class UdmurtTransliterator:
         """
         return self.expand_variants(wordVariants, self.rxCyrSchwa, ('ы', 'ӥ', 'у', 'ӧ'))
 
+    def expand_consonant_assimilation_variants(self, wordVariants):
+        """
+        Try double consonants that may have been the result of an assimilation.
+        """
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrMM, ('мм', 'нм'))
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrChCh, ('чч', 'тч', 'дч'))
+        return wordVariants
+
+    def expand_final_devoicing_variants(self, wordVariants):
+        """
+        Try voicing final consonants if they are voiceless.
+        """
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrFinalT, ('т', 'д'))
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrFinalK, ('к', 'г'))
+        return self.expand_variants(wordVariants, self.rxCyrFinalP, ('п', 'б'))
+
     def pick_best(self, words):
         """
         Choose the most probable replacement out of several options
@@ -401,7 +440,7 @@ class UdmurtTransliterator:
                     maxFreq = curFreq
         return bestWord
 
-    def transliterate_word_tatyshly_standard(self, word):
+    def transliterate_word_tatyshly_standard(self, word, finalDevoicing=False):
         if self.rxCyrillic.search(word) is not None:
             return word
         word = self.join_digraphs(word)
@@ -434,6 +473,9 @@ class UdmurtTransliterator:
         wordVariants = self.expand_w_variants(wordVariants)
         wordVariants = self.expand_glottal_stop_variants(wordVariants)
         wordVariants = self.expand_shwa_variants(wordVariants)
+        wordVariants = self.expand_consonant_assimilation_variants(wordVariants)
+        if finalDevoicing:
+            wordVariants = self.expand_final_devoicing_variants(wordVariants)
         # print(wordVariants)
 
         for i in range(len(wordVariants)):
@@ -469,6 +511,26 @@ class UdmurtTransliterator:
         # print(wordVariants)
         return self.pick_best(wordVariants)
 
+    def transliterate_word_cyrtrans_upa(self, word):
+        """
+        Transliterate Cyrillic transcription into UPA.
+        """
+        # if self.rxCyrillic.search(word) is None:
+        #     return word
+        word = self.join_digraphs_cyr(word)
+
+        letters = []
+        for letter in word:
+            if letter.lower() in self.cyr2upa:
+                if letter.islower():
+                    letters.append(self.cyr2upa[letter.lower()])
+                else:
+                    letters.append(self.cyr2upa[letter.lower()].upper())
+            else:
+                letters.append(letter)
+        word = ''.join(letters)
+        return word
+
     def transliterate_word(self, word, src='', target='', eafCleanup=None):
         """
         Return transliterated word, taking into account
@@ -486,6 +548,10 @@ class UdmurtTransliterator:
         if src == 'tatyshly_lat':
             if target == 'standard':
                 return self.transliterate_word_tatyshly_standard(word)
+        if src == 'tatyshly_cyr':
+            if target == 'standard':
+                wordUpa = self.transliterate_word_cyrtrans_upa(word)
+                return self.transliterate_word_tatyshly_standard(wordUpa, finalDevoicing=True)
 
         return word
 
@@ -542,3 +608,10 @@ if __name__ == '__main__':
     print(bt.transliterate("užaj školajə̑n ku̯amə̑n ar, biologi= biologija no ximija nu̇i."))
     # print(bt.beserman_translit_cyrillic('walʼlʼo no soje tuləs pɤžʼtəlizə, štobɨ gužem užan dərja.... marəmen...'))
     # print(bt.beserman_translit_upa('walʼlʼo no soje tuləs pɤžʼtəlizə, štobɨ gužem užan dərja.... marəmen...'))
+    bt = UdmurtTransliterator(src='tatyshly_cyr',
+                              target='standard',
+                              eafCleanup=True)
+    print(bt.transliterate("одик пол иммӓр ас дораз тылобурдоосъз ӧ⁰т'ътэм."))
+    print(bt.transliterate("со вӱэн мис'тӓс'кэм но сӹбӹрэ гӹнэ иммӓр доръ мънэм."))
+    print(bt.transliterate("— тон ачит вӱ шӧттид-а ма? — шӱэм но иммӓр, пэззъкэз шур доръ лэз'ъмтэ ни."))
+    print(bt.transliterate("тӥн'и сойин кўака вӱо интъйън, пэ, улэ, а пэззък ўан' гӱмӹрзэ вӱ уччаса орччътэ."))
