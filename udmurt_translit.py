@@ -32,15 +32,15 @@ class UdmurtTransliterator:
                     'ö': 'ӧ'})
     cyr2upa = {'а': 'a', 'б': 'b', 'в': 'v',
                'г': 'g', 'д': 'd', 'э': 'e',
-               'ж': 'ž', 'ш': 'š', 'ӧ': 'ӧ',
-               'ө': 'ə̑', 'ъ': 'ə̑', 'ӹ': 'ə̈', 'ч': 'č',
-               'з': 'z', 'и': 'i', 'й': 'j', 'к': 'k',
+               'ж': 'ž', 'ш': 'š', 'ӧ': 'ö',
+               'ө': 'ə̑', 'ъ': 'ə̑', 'ӹ': 'ə̈', 'ч': 'č\'', 'ӟ': 'ǯ\'',
+               'з': 'z', 'и': 'i', 'ӥ': 'i', 'й': 'j', 'к': 'k',
                'л': 'l', 'м': 'm', 'н': 'n',
                'о': 'o', 'п': 'p', 'р': 'r',
                'с': 's', 'т': 't', 'у': 'u',
                'ц': 'c', 'ў': 'u̯', 'х': 'x',
                'ф': 'f', 'ы': 'i̮', 'ӓ': 'ä',
-               'ӱ': 'u̇', 'ң': 'ŋ'}
+               'ӱ': 'u̇', 'ң': 'ŋ', 'ӝ': 'ǯ', 'ӵ': 'č'}
     cyrHard2Soft = {'а': 'я', 'э': 'е', 'е': 'е', 'ӥ': 'и', 'о': 'ё', 'у': 'ю'}
     rxSoften = re.compile('(?<![чӟ])ʼ([аэӥоу])', flags=re.I)
     rxCyrSoften = re.compile('([čǯ])(?!ʼ)', flags=re.I)
@@ -100,7 +100,9 @@ class UdmurtTransliterator:
     rxCyrCh = re.compile('чʼ?')
     rxCyrChCapital = re.compile('Чʼ?')
     rxCyrMM = re.compile('мм')
+    rxCyrTT = re.compile('тт')
     rxCyrChCh = re.compile('чʼ?чʼ?')
+    rxCyrDzjDzj = re.compile('ӟʼ?ӟʼ?')
     rxCyrConsCluster = re.compile('([бпдт])([рл])')
     rxOeCyr = re.compile('ӧ⁰')
     rxOeCapitalCyr = re.compile('Ӧ⁰')
@@ -411,7 +413,9 @@ class UdmurtTransliterator:
         Try double consonants that may have been the result of an assimilation.
         """
         wordVariants = self.expand_variants(wordVariants, self.rxCyrMM, ('мм', 'нм'))
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrTT, ('тт', 'дт'))
         wordVariants = self.expand_variants(wordVariants, self.rxCyrChCh, ('чч', 'тч', 'дч'))
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrDzjDzj, ('ӟӟ', 'дӟ', 'тӟ'))
         return wordVariants
 
     def expand_final_devoicing_variants(self, wordVariants):
