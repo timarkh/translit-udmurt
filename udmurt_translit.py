@@ -69,6 +69,8 @@ class UdmurtTransliterator:
     rxUeCapital = re.compile('U̇')
     rxUeCyr = re.compile('ӱ')
     rxUeCyrCapital = re.compile('Ӱ')
+    rxUeFinalCyr = re.compile('ӱ$')
+    rxUeFinalCyrCapital = re.compile('Ӱ$')
     rxWCyr = re.compile('ў')
     rxWCyrCapital = re.compile('Ў')
     rxOe = re.compile('ȯ')
@@ -319,6 +321,9 @@ class UdmurtTransliterator:
         """
         Try replacing ü with u or wi.
         """
+        for i in range(len(wordVariants)):
+            wordVariants[i] = self.rxUeFinalCyr.sub('у', wordVariants[i])
+            wordVariants[i] = self.rxUeFinalCyrCapital.sub('У', wordVariants[i])
         wordVariants = self.expand_variants(wordVariants, self.rxUeCyr, ('у', 'уи'))
         return self.expand_variants(wordVariants, self.rxUeCyrCapital, ('У', 'Уи'))
 
