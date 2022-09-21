@@ -1,5 +1,7 @@
 import re
 import json
+from uniparser_udmurt import UdmurtAnalyzer
+import random
 
 
 class UdmurtTransliterator:
@@ -82,21 +84,23 @@ class UdmurtTransliterator:
     rxSchwaCapital = re.compile('Ə̈|Ə̑')
     rxY = re.compile('i̮')
     rxYCapital = re.compile('I̮')
-    rxCyrFinalT = re.compile('т$')
-    rxCyrFinalK = re.compile('к$')
-    rxCyrFinalP = re.compile('г$')
+    rxCyrFinalT = re.compile('т(ь?$|ь?[кпстфхцчшщ])')
+    rxCyrFinalK = re.compile('к(ь?$|ь?[кпстфхцчшщ])$')
+    rxCyrFinalP = re.compile('г(ь?$|ь?[кпстфхцчшщ])$')
 
     rxCyrSchwa = re.compile('ө')
     rxCyrSchwaCapital = re.compile('Ө')
     rxCyrJeStart = re.compile('^йэ')
     rxCyrJeStartCapital = re.compile('^Йэ')
-    rxCyrDZjVStart = re.compile('^ӟʼ(?=[аеёиӥоӧуыэюяө])')
-    rxCyrDZjVStartCapital = re.compile('^Ӟʼ(?=[аеёиӥоӧуыэюяө])')
-    rxCyrChV = re.compile('чʼ(?=[аеёиӥоӧуыэюяө])')
-    rxCyrChVCapital = re.compile('Чʼ(?=[аеёиӥоӧуыэюяө])')
-    rxCyrDZjVMiddle = re.compile('(?<=\\w)ӟʼ(?=[аеёиӥоӧуыэюяө])')
+    rxCyrDZjVStart = re.compile('^(?:дʼзʼ|ӟʼ)(?=[аеёиӥоӧуӱыэюяө])')
+    rxCyrDZjVStartCapital = re.compile('^(?:ДʼЗʼ|Ӟʼ)(?=[аеёиӥоӧуӱыэюяө])')
+    rxCyrChV = re.compile('(?:тʼсʼ|чʼ)(?=[аеёиӥоӧуӱыэюяө])')
+    rxCyrChVCapital = re.compile('(?:ТʼСʼ|Чʼ)(?=[аеёиӥоӧуӱыэюяө])')
+    rxCyrDZjVMiddle = re.compile('(?<=\\w)(?:дʼзʼ|ӟʼ)(?=[аеёиӥоӧуӱыэюяө])')
+    rxCyrCDZjos = re.compile('(?<=\\w[тдкгбпʼ])(?:дʼзʼос|[дӟ]ʼос)')
+    rxCyrGlottalStopDZjos = re.compile('(?<=\\w)ˀ(?:дʼзʼос|[ӟд]ʼос)')
     rxCyrNg = re.compile('ң')
-    rxCyrJYEnd = re.compile('(?<=[аеёиӥоӧуыэюяө])й([өы]н$|[өы]с[ьʼ])')
+    rxCyrJYEnd = re.compile('(?<=[аеёиӥоӧуӱыэюяө])й([өы]н$|[өы]с[ьʼ])')
     rxCyrZh = re.compile('ж')
     rxCyrZhCapital = re.compile('Ж')
     rxCyrSh = re.compile('ш')
@@ -111,9 +115,14 @@ class UdmurtTransliterator:
     rxOeCyr = re.compile('ӧ⁰')
     rxOeCapitalCyr = re.compile('Ӧ⁰')
 
+    rxUPAApos = re.compile('([źśń])', flags=re.I)
+    dicUPAApos2Tatyshly = {'ź': 'z\'', 'ś': 's\'', 'ń': 'n\'',
+                           'Ź': 'Z\'', 'Ś': 'S\'', 'Ń': 'N\''}
+
     rxCyrillic = re.compile('^[а-яёӟӥӧўөА-ЯЁӞӤӦЎӨ.,;:!?\-()\\[\\]{}<>]*$')
 
-    rxWords = re.compile("[\\wʼ̑̈'̯̮̇-]+|[^\\wʼ̑̈'̯̮̇-]+", flags=re.DOTALL)
+    rxWords = re.compile("[\\wʼ´́̑̈'··̯̮̇-]+|[^\\wʼ´́̑̈'··̯̮̇-]+", flags=re.DOTALL)
+    rxGoodHyphenatedWord = re.compile('^\\w{3,}[^ъ.()-]-[^ьъ()-]')
 
     def __init__(self, src, target, eafCleanup=False):
         self.cyrReplacements = {}
@@ -123,6 +132,8 @@ class UdmurtTransliterator:
         self.src = src
         self.target = target
         self.eafCleanup = eafCleanup
+        self.analyzableWords = set()
+        self.a = UdmurtAnalyzer(mode='strict')
 
         # Basic replacements that always have to take place
         # with Cyrillic output:
@@ -158,6 +169,25 @@ class UdmurtTransliterator:
         with open('data/std_freq_dict.json', 'r', encoding='utf-8') as fIn:
             freqDict = json.load(fIn)
         return freqDict
+
+    def analyzable(self, word):
+        """
+        Return True iff the word can be analyzed by the Udmurt analyzer.
+        """
+        if word in self.analyzableWords:
+            # Cache
+            return True
+        analyses = self.a.analyze_words(word)
+        if len(analyses) <= 0 or (len(analyses) == 1 and len(analyses[0].lemma) <= 0):
+            if self.rxGoodHyphenatedWord.search(word) is not None:
+                if all(self.analyzable(part) for part in word.split('-')):
+                    self.analyzableWords.add(word)
+                    return True
+            return False
+        if all(',missp' in ana.gramm for ana in analyses):
+            return False
+        self.analyzableWords.add(word)
+        return True
 
     def beserman_translit_cyrillic(self, text):
         """
@@ -278,6 +308,15 @@ class UdmurtTransliterator:
         text = self.rxCyrVSoft.sub('\\1', text)
         return text
 
+    def upa_to_tatyshly(self, word):
+        word = word.replace('·', '')    # Remove stress marks
+        word = word.replace('·', '')    # Remove stress marks
+        word = word.replace('͕', "'")
+        word = self.rxUPAApos.sub(lambda m: self.dicUPAApos2Tatyshly[m.group(1)], word)
+        word = word.replace('´', "'")
+        word = word.replace('́', "'")
+        return word
+
     def join_digraphs(self, word):
         word = self.rxWDiacritic.sub('w', word)
         word = self.rxWDiacriticCapital.sub('W', word)
@@ -296,15 +335,17 @@ class UdmurtTransliterator:
         word = self.rxOeCapitalCyr.sub('Ȯ', word)
         return word
 
-    def expand_variants(self, wordVariants, rxWhat, replacements):
+    def expand_variants(self, wordVariants, rxWhat, replacements, depth=-1):
         """
         Replace each occurrence of rxWhat within each of the words
         stored in wordVariants with all options listed in replacements.
+        If depth > 0, it limits the number of iterations.
         Return updated word list.
         """
         wordVariantsUpdated = []
         prevListLen = -1
-        while len(wordVariantsUpdated) != prevListLen:
+        iStep = 0
+        while len(wordVariantsUpdated) != prevListLen and (depth <= 0 or iStep < depth):
             wordVariantsUpdated = []
             prevListLen = len(wordVariants)
             for word in wordVariants:
@@ -317,6 +358,7 @@ class UdmurtTransliterator:
                         if wordNew not in wordVariantsUpdated:
                             wordVariantsUpdated.append(wordNew)
             wordVariants = wordVariantsUpdated[:]
+            iStep += 1
         return wordVariants
 
     def expand_ue_variants(self, wordVariants):
@@ -355,6 +397,21 @@ class UdmurtTransliterator:
         Try replacing dzja with dzja or dja.
         """
         wordVariants = self.expand_variants(wordVariants, self.rxCyrDZjVMiddle, ('ӟʼ', 'дʼ'))
+        return wordVariants
+
+    def expand_CDzjos_variants(self, wordVariants):
+        """
+        Try replacing Cdzjos with Cjos.
+        """
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrCDZjos, ('ӟʼос', 'йос'), depth=1)
+        return wordVariants
+
+    def expand_GlottalStopDzjos_variants(self, wordVariants):
+        """
+        Try replacing glottal stop + dzjos with different Cjos.
+        """
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrGlottalStopDZjos, ('ˀӟʼос', 'тйос', 'дйос',
+                                                                                       'кйос', 'гйос'), depth=1)
         return wordVariants
 
     def expand_chV_variants(self, wordVariants):
@@ -429,9 +486,9 @@ class UdmurtTransliterator:
         """
         Try voicing final consonants if they are voiceless.
         """
-        wordVariants = self.expand_variants(wordVariants, self.rxCyrFinalT, ('т', 'д'))
-        wordVariants = self.expand_variants(wordVariants, self.rxCyrFinalK, ('к', 'г'))
-        return self.expand_variants(wordVariants, self.rxCyrFinalP, ('п', 'б'))
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrFinalT, ('т\\1', 'д\\1'))
+        wordVariants = self.expand_variants(wordVariants, self.rxCyrFinalK, ('к\\1', 'г\\1'))
+        return self.expand_variants(wordVariants, self.rxCyrFinalP, ('п\\1', 'б\\1'))
 
     def pick_best(self, words):
         """
@@ -440,6 +497,8 @@ class UdmurtTransliterator:
         """
         if len(words) <= 0:
             return ''
+        elif len(words) == 1:
+            return words[0]
         bestWord = words[0]
         maxFreq = -1
         for word in words:
@@ -449,11 +508,18 @@ class UdmurtTransliterator:
                 if curFreq > maxFreq:
                     bestWord = word
                     maxFreq = curFreq
+        if maxFreq == -1:
+            # Couldn't find any word in the frequency dictionary
+            random.shuffle(words)
+            for word in words:
+                if self.analyzable(word):
+                    return word
         return bestWord
 
-    def transliterate_word_tatyshly_standard(self, word, finalDevoicing=False):
+    def transliterate_word_tatyshly_standard(self, word, finalDevoicing=True):
         if self.rxCyrillic.search(word) is not None:
             return word
+        word = self.upa_to_tatyshly(word)
         word = self.join_digraphs(word)
 
         letters = []
@@ -474,6 +540,8 @@ class UdmurtTransliterator:
         wordVariants = self.expand_dzjV_variants_start(wordVariants)
         wordVariants = self.expand_chV_variants(wordVariants)
         wordVariants = self.expand_dzjV_variants_middle(wordVariants)
+        wordVariants = self.expand_CDzjos_variants(wordVariants)
+        wordVariants = self.expand_GlottalStopDzjos_variants(wordVariants)
         wordVariants = self.expand_Vjy_variants(wordVariants)
         wordVariants = self.expand_ng_variants(wordVariants)
         wordVariants = self.expand_sh_variants(wordVariants)
