@@ -6,7 +6,8 @@ import random
 
 class UdmurtTransliterator:
     rxSpaces = re.compile('[ \t]+')
-    rxLetters = re.compile('\w+')
+    rxLetters = re.compile('\\w+')
+    rxLetter = re.compile('(\\w)')
     rxDots = re.compile(' *\\.\\.+ *')
     rxNrzb = re.compile('[(<\\[]?(?:нрзб|nrzb)\\.?[)>\\]]?')
     rxSentEnd = re.compile('[.?!,;:][)"]?$')
@@ -71,6 +72,7 @@ class UdmurtTransliterator:
     rxWDiacriticCapital = re.compile('U̯')
     rxUe = re.compile('u̇')
     rxUeCapital = re.compile('U̇')
+    rxKUeCyr = re.compile('кӱ')
     rxUeCyr = re.compile('ӱ')
     rxUeCyrCapital = re.compile('Ӱ')
     rxUeFinalCyr = re.compile('ӱ$')
@@ -86,7 +88,7 @@ class UdmurtTransliterator:
     rxYCapital = re.compile('I̮')
     rxCyrFinalT = re.compile('т(ь?$|ь?[кпстфхцчшщ])')
     rxCyrFinalK = re.compile('к(ь?$|ь?[кпстфхцчшщ])$')
-    rxCyrFinalP = re.compile('г(ь?$|ь?[кпстфхцчшщ])$')
+    rxCyrFinalP = re.compile('п(ь?$|ь?[кпстфхцчшщ])$')
 
     rxCyrSchwa = re.compile('ө')
     rxCyrSchwaCapital = re.compile('Ө')
@@ -131,8 +133,15 @@ class UdmurtTransliterator:
         self.rxCyrReplacements = re.compile('^$')
         self.src = src
         self.target = target
+
+        # eafCleanup:
+        # - make sure inaudible fragments are written as [нрзб]
+        # - make sure spaces and triple dots are all right
+        # - capitalize sentence-initial words and proper names
         self.eafCleanup = eafCleanup
         self.analyzableWords = set()
+        self.PNs = set()       # Proper nouns
+        self.notPNs = set()    # Not proper nouns
         self.a = UdmurtAnalyzer(mode='strict')
 
         # Basic replacements that always have to take place
@@ -188,6 +197,24 @@ class UdmurtTransliterator:
             return False
         self.analyzableWords.add(word)
         return True
+
+    def is_proper(self, word):
+        """
+        Return True iff the word can only be analyzed as a proper noun
+        by the Udmurt analyzer.
+        """
+        if word in self.PNs:
+            return True
+        elif word in self.notPNs:
+            return False
+        analyses = self.a.analyze_words(word)
+        if len(analyses) <= 0 or (len(analyses) == 1 and len(analyses[0].lemma) <= 0):
+            return False
+        if all(',PN' in ana.gramm for ana in analyses):
+            self.PNs.add(word)
+            return True
+        self.notPNs.add(word)
+        return False
 
     def beserman_translit_cyrillic(self, text):
         """
@@ -368,8 +395,11 @@ class UdmurtTransliterator:
         for i in range(len(wordVariants)):
             wordVariants[i] = self.rxUeFinalCyr.sub('у', wordVariants[i])
             wordVariants[i] = self.rxUeFinalCyrCapital.sub('У', wordVariants[i])
-        wordVariants = self.expand_variants(wordVariants, self.rxUeCyr, ('у', 'уи'))
-        return self.expand_variants(wordVariants, self.rxUeCyrCapital, ('У', 'Уи'))
+        wordVariants = self.expand_variants(wordVariants, self.rxKUeCyr, ('ку', 'куи'))
+        for i in range(len(wordVariants)):
+            wordVariants[i] = self.rxUeCyr.sub('у', wordVariants[i])
+            wordVariants[i] = self.rxUeCyrCapital.sub('У', wordVariants[i])
+        return wordVariants
 
     def expand_w_variants(self, wordVariants):
         """
@@ -628,11 +658,15 @@ class UdmurtTransliterator:
         # Lots of cases
         if src == 'tatyshly_lat':
             if target == 'standard':
-                return self.transliterate_word_tatyshly_standard(word)
-        if src == 'tatyshly_cyr':
+                word = self.transliterate_word_tatyshly_standard(word)
+        elif src == 'tatyshly_cyr':
             if target == 'standard':
                 wordUpa = self.transliterate_word_cyrtrans_upa(word)
-                return self.transliterate_word_tatyshly_standard(wordUpa, finalDevoicing=True)
+                word = self.transliterate_word_tatyshly_standard(wordUpa, finalDevoicing=True)
+
+        if eafCleanup:
+            if self.is_proper(word):
+                word = self.rxLetter.sub(lambda m: m.group(1).upper(), word, count=1)
 
         return word
 
@@ -662,6 +696,7 @@ class UdmurtTransliterator:
 
         if eafCleanup:
             text = self.rxNrzb.sub('[нрзб]', text)
+            text = self.rxLetter.sub(lambda m: m.group(1).upper(), text, count=1)
             # if target == 'standard':
             #     text = self.rxTwoPartWords.sub('\\1 \\2', text)
             # else:
