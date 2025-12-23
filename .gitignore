@@ -142,3 +142,18 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+csv/
+csv_transliterated/
+
+eaf/
+eaf_transliterated/
+
+xml/
+xml_transliterated/
+
+errors.log
+
+*.docx
+*.xlsx
+*.odt
