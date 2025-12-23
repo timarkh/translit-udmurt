@@ -121,7 +121,7 @@ class UdmurtTransliterator:
     dicUPAApos2Tatyshly = {'ź': 'z\'', 'ś': 's\'', 'ń': 'n\'',
                            'Ź': 'Z\'', 'Ś': 'S\'', 'Ń': 'N\''}
 
-    rxCyrillic = re.compile('^[а-яёӟӥӧўөА-ЯЁӞӤӦЎӨ.,;:!?\-()\\[\\]{}<>]*$')
+    rxCyrillic = re.compile('^[а-яёӟӥӧўөА-ЯЁӞӤӦЎӨ.,;:!?\\-()\\[\\]{}<>]*$')
 
     rxWords = re.compile("[\\wʼ´́̑̈'··̯̮̇-]+|[^\\wʼ´́̑̈'··̯̮̇-]+", flags=re.DOTALL)
     rxGoodHyphenatedWord = re.compile('^\\w{3,}[^ъ.()-]-[^ьъ()-]')
@@ -261,8 +261,9 @@ class UdmurtTransliterator:
         res = res.replace('ʼ', 'ь')
         res = self.rxExtraSoft.sub('\\1\\1', res)
 
-        if res in self.cyrReplacements:
-            res = self.cyrReplacements[res]
+        if self.rxCyrReplacementsBasic.search(res) is not None:
+            for rxSrc, replacement in self.cyrReplacementsBasic.items():
+                res = rxSrc.sub(replacement, res)
         return res
 
     def beserman_translit_upa(self, text):
@@ -663,6 +664,9 @@ class UdmurtTransliterator:
             if target == 'standard':
                 wordUpa = self.transliterate_word_cyrtrans_upa(word)
                 word = self.transliterate_word_tatyshly_standard(wordUpa, finalDevoicing=True)
+        elif src == 'beserman_lat':
+            if target == 'beserman_cyr':
+                word = self.beserman_translit_cyrillic_word(word)
 
         if eafCleanup:
             if self.is_proper(word):
@@ -732,3 +736,7 @@ if __name__ == '__main__':
     print(bt.transliterate("со вӱэн мис'тӓс'кэм но сӹбӹрэ гӹнэ иммӓр доръ мънэм."))
     print(bt.transliterate("— тон ачит вӱ шӧттид-а ма? — шӱэм но иммӓр, пэззъкэз шур доръ лэз'ъмтэ ни."))
     print(bt.transliterate("тӥн'и сойин кўака вӱо интъйън, пэ, улэ, а пэззък ўан' гӱмӹрзэ вӱ уччаса орччътэ."))
+    bt = UdmurtTransliterator(src='beserman_lat',
+                              target='beserman_cyr',
+                              eafCleanup=False)
+    print(bt.transliterate("Ləkte perešʼ babam i abdra: valez no evəl, mare vuzanə nue val, noməriz no evəl."))
